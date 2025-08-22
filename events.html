@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Funtime Carnivals — Events</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --primary:#ff0000;--accent:#ffcc00;--blue:#0066ff;--ink:#222;--paper:#fff8f0;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--paper);color:#333}
+    header{
+      position:sticky;top:0;z-index:10;
+      background:linear-gradient(90deg,var(--primary),var(--accent),var(--blue));
+      color:#fff;display:flex;gap:16px;align-items:center;justify-content:space-between;padding:16px 20px;
+      font-family:'Luckiest Guy',cursive
+    }
+    header h1{margin:0;font-size:1.6rem}
+    .nav{display:flex;gap:14px}
+    .nav a{color:#fff;text-decoration:none;font-weight:700}
+    .nav a:hover{text-decoration:underline}
+    .container{max-width:1100px;margin:0 auto;padding:24px 16px}
+    .toolbar{display:grid;gap:12px;grid-template-columns:1fr;align-items:center;margin-bottom:18px}
+    @media(min-width:720px){.toolbar{grid-template-columns:1fr auto auto auto}}
+    .search{display:flex;gap:8px}
+    input[type="search"],select{
+      padding:10px;border:1px solid #ccc;border-radius:8px;background:#fff;font-size:1rem;flex:1
+    }
+    .btn{border:0;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-ghost{background:#fff;color:var(--ink);border:1px solid #ddd}
+
+    .grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+    .card{
+      background:#fff;border-radius:14px;padding:18px;box-shadow:0 8px 18px rgba(0,0,0,.08);
+      display:flex;flex-direction:column;gap:10px;transition:transform .2s ease
+    }
+    .card:hover{transform:translateY(-2px)}
+    .title{font-weight:800;font-size:1.15rem}
+    .meta{display:flex;gap:8px;flex-wrap:wrap;font-size:.95rem;color:#444}
+    .pill{background:#f3f3f3;border-radius:999px;padding:6px 10px}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+    .month-header{margin:28px 0 8px;font-family:'Luckiest Guy',cursive;font-size:1.4rem;color:#111}
+
+    .empty{padding:28px;text-align:center;background:#fff;border:1px dashed #ddd;border-radius:12px}
+    footer{margin:36px 0 12px;text-align:center;color:#666}
+  </style>
+</head>
+<body>
+<header>
+  <h1>🎡 Funtime Carnivals — Events</h1>
+  <nav class="nav">
+    <a href="index.html">Home</a>
+    <a href="#" aria-current="page">Events</a>
+    <a href="mailto:stevensimpson1999@gmail.com">Contact</a>
+  </nav>
+</header>
+
+<main class="container">
+  <section class="toolbar">
+    <div class="search">
+      <input id="q" type="search" placeholder="Search town, venue, postcode… (e.g. Glasgow, Green)" />
+      <button class="btn btn-ghost" id="clearBtn" title="Clear">Clear</button>
+    </div>
+    <select id="when">
+      <option value="upcoming" selected>Upcoming</option>
+      <option value="past">Past</option>
+      <option value="all">All</option>
+    </select>
+    <select id="region">
+      <option value="all" selected>All Regions</option>
+      <option value="scotland">Scotland</option>
+      <option value="england">England</option>
+      <option value="wales">Wales</option>
+      <option value="ni">Northern Ireland</option>
+    </select>
+    <button class="btn btn-primary" id="exportICS">Export .ics</button>
+  </section>
+
+  <div id="list"></div>
+
+  <footer>© 2025 Funtime Carnivals</footer>
+</main>
+
+<script>
+// ---- Editable Events Data -----------------------------------------------
+// Tip: Add real events here. Dates are ISO (YYYY-MM-DD). Use region keys: scotland|england|wales|ni
+const EVENTS = [
+  { title:"Glasgow Green Funfair", start:"2025-09-10", end:"2025-09-15", town:"Glasgow", venue:"Glasgow Green", postcode:"G1 5DB", region:"scotland", coords:[55.852, -4.242], notes:"Family Day Wed: wristbands" },
+  { title:"Edinburgh Meadows", start:"2025-09-20", end:"2025-09-25", town:"Edinburgh", venue:"The Meadows", postcode:"EH9 1ND", region:"scotland", coords:[55.940, -3.189], notes:"Student Night Fri" },
+  { title:"Carlisle Autumn Fair", start:"2025-10-02", end:"2025-10-06", town:"Carlisle", venue:"Bitts Park", postcode:"CA3 8UL", region:"england", coords:[54.899,-2.939], notes:"Half-price Monday" },
+  { title:"Dundee Riverside Lights", start:"2025-10-12", end:"2025-10-18", town:"Dundee", venue:"Riverside Park", postcode:"DD2 1UG", region:"scotland", coords:[56.456,-2.989], notes:"Fireworks Sat 9pm" },
+  { title:"Ayr Seafront Spectacular", start:"2025-08-01", end:"2025-08-05", town:"Ayr", venue:"Low Green", postcode:"KA7 2XA", region:"scotland", coords:[55.458,-4.644], notes:"Past example" },
+];
+
+// ---- Helpers -------------------------------------------------------------
+const tz = "Europe/London"; // ensures UK-style times
+const today = new Date();
+function parseISO(d){ return new Date(d+"T00:00:00"); }
+function fmtDate(d){ return new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:tz}).format(d); }
+function groupByMonth(items){
+  const groups = new Map();
+  items.forEach(ev=>{
+    const key = new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric',timeZone:tz}).format(parseISO(ev.start));
+    if(!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(ev);
+  });
+  return groups;
+}
+function isUpcoming(ev){ return parseISO(ev.end) >= new Date(today.toDateString()); }
+
+// Build a Google Maps link from coords or postcode
+function mapHref(ev){
+  if (Array.isArray(ev.coords)) return `https://maps.google.com/?q=${ev.coords[0]},${ev.coords[1]}`;
+  if (ev.postcode) return `https://maps.google.com/?q=${encodeURIComponent(ev.postcode+' '+ev.venue)}`;
+  return `https://maps.google.com/?q=${encodeURIComponent(ev.venue+' '+ev.town)}`;
+}
+
+// ---- Rendering -----------------------------------------------------------
+const listEl = document.getElementById('list');
+const qEl = document.getElementById('q');
+const whenEl = document.getElementById('when');
+const regionEl = document.getElementById('region');
+const clearBtn = document.getElementById('clearBtn');
+
+function render(){
+  const q = (qEl.value||'').trim().toLowerCase();
+  const when = whenEl.value;
+  const region = regionEl.value;
+
+  let filtered = EVENTS.filter(ev=>{
+    const hay = `${ev.title} ${ev.town} ${ev.venue} ${ev.postcode}`.toLowerCase();
+    const matchQ = q? hay.includes(q): true;
+    const matchRegion = region==='all' ? true : ev.region===region;
+    const matchWhen = when==='all' ? true : (when==='upcoming'? isUpcoming(ev) : !isUpcoming(ev));
+    return matchQ && matchRegion && matchWhen;
+  }).sort((a,b)=> a.start.localeCompare(b.start));
+
+  if (!filtered.length){
+    listEl.innerHTML = `<div class="empty">No events match your filters.</div>`; return;
+  }
+
+  const groups = groupByMonth(filtered);
+  let html = '';
+  groups.forEach((events, month)=>{
+    html += `<h2 class="month-header">${month}</h2><div class="grid">`;
+    events.forEach(ev=>{
+      const start = fmtDate(parseISO(ev.start));
+      const end = fmtDate(parseISO(ev.end));
+      html += `
+      <article class="card">
+        <div class="title">${ev.title}</div>
+        <div class="meta">
+          <span class="pill">${ev.town}</span>
+          <span class="pill">${ev.venue}</span>
+          <span class="pill">${start} – ${end}</span>
+          ${ev.postcode?`<span class="pill">${ev.postcode}</span>`:''}
+        </div>
+        ${ev.notes? `<div>${ev.notes}</div>`:''}
+        <div class="actions">
+          <a class="btn btn-ghost" href="${mapHref(ev)}" target="_blank" rel="noopener">View Map</a>
+          <button class="btn btn-primary" onclick='downloadICS(${JSON.stringify(JSON.stringify(ev))})'>Add to Calendar</button>
+        </div>
+      </article>`;
+    });
+    html += '</div>';
+  });
+  listEl.innerHTML = html;
+}
+
+clearBtn.addEventListener('click',()=>{ qEl.value=''; render(); });
+qEl.addEventListener('input', render);
+whenEl.addEventListener('change', render);
+regionEl.addEventListener('change', render);
+
+// ---- .ics Export (single + bulk) ----------------------------------------
+function icsFor(ev){
+  // All-day spanning start..end inclusive
+  const dtStart = ev.start.replaceAll('-','')+"T000000";
+  // add one day to end for all-day DTEND (exclusive)
+  const d = parseISO(ev.end); d.setDate(d.getDate()+1);
+  const dtEnd = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}T000000`;
+  const uid = `${ev.title.replace(/\s+/g,'-').toLowerCase()}-${dtStart}@funtimecarnivals`;
+  const desc = `${ev.venue}, ${ev.town}${ev.postcode? ' '+ev.postcode:''}${ev.notes? '\n\nNotes: '+ev.notes:''}`;
+  return `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Funtime Carnivals//Events//EN\nBEGIN:VEVENT\nUID:${uid}\nDTSTAMP:${dtStart}Z\nDTSTART:${dtStart}Z\nDTEND:${dtEnd}Z\nSUMMARY:${ev.title}\nLOCATION:${ev.venue}, ${ev.town}${ev.postcode? ' '+ev.postcode:''}\nDESCRIPTION:${desc}\nEND:VEVENT\nEND:VCALENDAR`;
+}
+
+function download(filename, text){
+  const blob = new Blob([text], {type:'text/calendar'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+
+function downloadICS(jsonEv){
+  const ev = JSON.parse(jsonEv);
+  download(`${ev.title.replace(/[^a-z0-9]+/ig,'-')}.ics`, icsFor(ev));
+}
+
+// Bulk export all currently filtered events
+const exportBtn = document.getElementById('exportICS');
+exportBtn.addEventListener('click',()=>{
+  const q = (qEl.value||'').trim().toLowerCase();
+  const when = whenEl.value; const region = regionEl.value;
+  const filtered = EVENTS.filter(ev=>{
+    const hay = `${ev.title} ${ev.town} ${ev.venue} ${ev.postcode}`.toLowerCase();
+    const matchQ = q? hay.includes(q): true;
+    const matchRegion = region==='all' ? true : ev.region===region;
+    const matchWhen = when==='all' ? true : (when==='upcoming'? isUpcoming(ev) : !isUpcoming(ev));
+    return matchQ && matchRegion && matchWhen;
+  });
+  if(!filtered.length){ alert('No events to export for current filters.'); return; }
+  const combined = 'BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Funtime Carnivals//Events//EN\n' +
+    filtered.map(icsFor).map(s=>s.replace('BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Funtime Carnivals//Events//EN\n','').replace('\nEND:VCALENDAR','')).join('') +
+    'END:VCALENDAR';
+  download('funtime-carnivals-events.ics', combined);
+});
+
+// First render
+render();
+</script>
+</body>
+</html>
